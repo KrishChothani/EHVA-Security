@@ -1,4 +1,3 @@
-# .github/workflows/sbom.yml
 name: SBOM (Syft)
 
 on:
@@ -14,21 +13,13 @@ on:
 jobs:
   sbom:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write   # needed if the action uploads artifacts/releases
-      actions: read
     steps:
       - uses: actions/checkout@v4
-
-      # Pin to a specific release of anchore/sbom-action
-      - uses: anchore/sbom-action@v0.20.6
+      - uses: anchore/sbom-action@v0
         with:
           path: ${{ inputs.target }}
           format: spdx-json
           output-file: ${{ inputs.output }}
-          # Optional: the action already uploads an artifact by default.
-          # If you keep the manual upload step below, turn this off:
-          upload-artifact: false
 
       - uses: actions/upload-artifact@v4
         with:
