@@ -1,8 +1,21 @@
-name: Trivy Source Code Scan
+name: Container Scan (Trivy)
 
 on:
   workflow_call:
     inputs:
+      image:
+        type: string
+        description: "Docker image ref to scan"
+        default: "app:ci"
+      build:
+        type: boolean
+        default: true
+      dockerfile:
+        type: string
+        default: "./Dockerfile"
+      context:
+        type: string
+        default: "."
       severity_fail:
         type: string
         default: "CRITICAL,HIGH"
@@ -11,36 +24,28 @@ jobs:
   trivy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ✅ Scan repository files (no Docker)
-      - name: Trivy FS scan
-        uses: aquasecurity/trivy-action@v0.20.0
+      - if: ${{ inputs.build }}
+        name: Build image
+        run: docker build -t "${{ inputs.image }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
+
+      - name: Trivy scan
+        uses: aquasecurity/setup-trivy@v0.2.4
         with:
-          scan-type: fs
-          scan-ref: .
+          image-ref: ${{ inputs.image }}
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: ${{ inputs.severity_fail }}
 
-      # ✅ Generate detailed JSON report (via action)
-      - name: Trivy JSON report
-        uses: aquasecurity/trivy-action@v0.20.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: 'json'
-          output: 'trivy.json'
-          ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: ${{ inputs.severity_fail }}
+      - name: Save report
+        if: ${{ always() }}
+        run: trivy image --severity ${{ inputs.severity_fail }} --format json ${{ inputs.image }} > trivy.json
 
-      # ✅ Upload JSON report
-      - name: Upload Trivy Report
-        if: always()
+      - name: Upload report
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report
