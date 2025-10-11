@@ -1,0 +1,52 @@
+name: Container Scan (Trivy)
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        type: string
+        description: "Docker image ref to scan"
+        default: "app:ci"
+      build:
+        type: boolean
+        default: true
+      dockerfile:
+        type: string
+        default: "./Dockerfile"
+      context:
+        type: string
+        default: "."
+      severity_fail:
+        type: string
+        default: "CRITICAL,HIGH"
+
+jobs:
+  trivy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - if: ${{ inputs.build }}
+        name: Build image
+        run: docker build -t "${{ inputs.image }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
+
+      - name: Trivy scan
+        uses: aquasecurity/trivy-action@v1
+        with:
+          image-ref: ${{ inputs.image }}
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: ${{ inputs.severity_fail }}
+
+      - name: Save report
+        if: ${{ always() }}
+        run: trivy image --severity ${{ inputs.severity_fail }} --format json ${{ inputs.image }} > trivy.json
+
+      - name: Upload report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy.json

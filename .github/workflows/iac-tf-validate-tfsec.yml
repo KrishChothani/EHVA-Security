@@ -1,0 +1,40 @@
+name: IaC Validate & tfsec
+
+on:
+  workflow_call:
+    inputs:
+      working_dir:
+        type: string
+        default: "infra"
+      tf_version:
+        type: string
+        default: "1.8.5"
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: ${{ inputs.tf_version }}
+
+      - name: Terraform fmt/validate/plan
+        working-directory: ${{ inputs.working_dir }}
+        run: |
+          terraform init -input=false
+          terraform fmt -check
+          terraform validate
+          terraform plan -out=tfplan
+
+      - name: tfsec
+        uses: aquasecurity/tfsec-action@v1
+        with:
+          args: ${{ inputs.working_dir }}
+
+      - name: Upload plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: tf-plan
+          path: ${{ inputs.working_dir }}/tfplan

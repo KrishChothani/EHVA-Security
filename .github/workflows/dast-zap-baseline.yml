@@ -1,0 +1,30 @@
+name: DAST (ZAP Baseline)
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        required: true
+      max_time:
+        type: number
+        default: 5
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ZAP Baseline
+        uses: zaproxy/action-baseline@v0.10.0
+        with:
+          target: ${{ inputs.target }}
+          rules_file_name: ''
+          cmd_options: '-m ${{ inputs.max_time }}'
+      - name: Upload HTML report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: report_html.html

@@ -1,0 +1,27 @@
+name: SBOM (Syft)
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        default: "."
+      output:
+        type: string
+        default: "sbom.spdx.json"
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: anchore/sbom-action@v0
+        with:
+          path: ${{ inputs.target }}
+          format: spdx-json
+          output-file: ${{ inputs.output }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: ${{ inputs.output }}
