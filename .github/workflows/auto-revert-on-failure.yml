@@ -35,15 +35,11 @@ on:
         default: "krishchothani259@gmail.com"
 
     secrets:
-      # Email for notification
       SMTP_HOST: { required: true }
       SMTP_PORT: { required: true }
       SMTP_USER: { required: true }
       SMTP_PASS: { required: true }
-
-      # Optional token for pushing to protected branches (recommended if using revert_mode=push)
-      REVERT_TOKEN:
-        required: false
+      REVERT_TOKEN: { required: false }
 
 permissions:
   contents: write
@@ -118,20 +114,18 @@ jobs:
         with:
           ref: ${{ env.TARGET_BRANCH }}
           fetch-depth: 0
-          token: ${{ secrets.REVERT_TOKEN != '' && secrets.REVERT_TOKEN || github.token }}
+          token: ${{ secrets.REVERT_TOKEN || github.token }}
 
       - name: Configure git
         run: |
           git config user.name "EHVA Auto-Reverter"
           git config user.email "actions@users.noreply.github.com"
 
-      - name: Revert commit (create branch for PR mode)
+      - name: Revert commit
         id: revert
         shell: bash
         run: |
           set -e
-          echo "Reverting ${BAD_SHA} on ${TARGET_BRANCH} using mode ${MODE}"
-
           if [ "${MODE}" = "push" ]; then
             git revert --no-edit "${BAD_SHA}"
             git push origin "HEAD:${TARGET_BRANCH}"
@@ -145,7 +139,6 @@ jobs:
           fi
 
       - name: Open PR (if mode=pr)
-        id: pr
         if: ${{ inputs.revert_mode == 'pr' }}
         uses: actions/github-script@v7
         with:
@@ -156,12 +149,10 @@ jobs:
 
             const head = process.env.REVERT_BRANCH;
             const base = process.env.TARGET_BRANCH;
-            const title = `${process.env.PR_TITLE || ''}` || core.getInput('pr_title') || 'Auto Revert';
-            const body = `${process.env.PR_BODY || ''}` || core.getInput('pr_body') || 'Auto revert for failing workflow';
+            const title = core.getInput('pr_title') || `Auto Revert: ${process.env.BAD_SHA}`;
+            const body = core.getInput('pr_body') || 'Auto revert for failing workflow';
 
-            const res = await github.rest.pulls.create({
-              owner, repo, head, base, title, body
-            });
+            const res = await github.rest.pulls.create({ owner, repo, head, base, title, body });
             core.info(`Opened PR #${res.data.number}`);
 
       - name: Outputs
@@ -179,7 +170,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [resolve_recipient, make_revert]
     steps:
-      - name: Send Email via EHVA Email Service
+      - name: Send Email
         uses: KrishChothani/EHVA-Security/.github/workflows/email_service.yml@main
         with:
           to: ${{ needs.resolve_recipient.outputs.to }}
@@ -187,7 +178,7 @@ jobs:
           sender_name: ${{ inputs.sender_name }}
           subject: >-
             ♻️ [${{ github.repository }}] Auto Revert (${{
-              needs.make_revert.outputs.revert_mode == 'push' && 'Pushed' || 'PR Opened'
+              needs.make_revert.outputs.revert_mode == 'push' ? 'Pushed' : 'PR Opened'
             }}) for failed workflow: ${{ github.event.workflow_run.name }}
           body: |
             <h2>♻️ Auto Revert Triggered</h2>
@@ -195,13 +186,9 @@ jobs:
             <p><strong>Failed Workflow:</strong> ${{ github.event.workflow_run.name }}</p>
             <p><strong>Branch:</strong> ${{ github.event.workflow_run.head_branch }}</p>
             <p><strong>Commit:</strong> <a href="https://github.com/${{ github.repository }}/commit/${{ github.event.workflow_run.head_sha }}">${{ github.event.workflow_run.head_sha }}</a></p>
-
             <p><strong>Revert Mode:</strong> ${{ needs.make_revert.outputs.revert_mode }}</p>
             <p><strong>Revert Branch:</strong> ${{ needs.make_revert.outputs.revert_branch }}</p>
-
             <p><a href="${{ github.event.workflow_run.html_url }}">🔗 View Failed Run</a></p>
-            <hr/>
-            <p>Sent by <strong>EHVA Auto-Reverter</strong>.</p>
         secrets:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_PORT: ${{ secrets.SMTP_PORT }}
@@ -209,7 +196,6 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
 
   fail_check:
-    # Always fail so the "revert service" itself shows ❌ and can be required in branch protection
     name: ❌ Mark as Failed (to block)
     runs-on: ubuntu-latest
     needs: [make_revert, notify]
