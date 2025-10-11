@@ -31,7 +31,7 @@ jobs:
         run: docker build -t "${{ inputs.image }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
 
       - name: Trivy scan
-        uses: aquasecurity/trivy-action@v1
+        uses: aquasecurity/setup-trivy@v0.2.4
         with:
           image-ref: ${{ inputs.image }}
           format: 'table'
