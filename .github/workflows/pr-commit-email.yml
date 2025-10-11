@@ -7,6 +7,38 @@ on:
         description: "Email address of the maintainer"
         required: true
         type: string
+
+      # Added optional inputs to receive caller context
+      PR_TITLE:
+        description: "Pull request title (optional)"
+        required: false
+        type: string
+      PR_URL:
+        description: "Pull request URL (optional)"
+        required: false
+        type: string
+      CONTRIBUTOR:
+        description: "PR contributor login (optional)"
+        required: false
+        type: string
+
+      BRANCH:
+        description: "Branch name (optional)"
+        required: false
+        type: string
+      COMMITTER:
+        description: "Committer (optional)"
+        required: false
+        type: string
+      COMMIT_MESSAGE:
+        description: "Commit message (optional)"
+        required: false
+        type: string
+      COMMIT_URL:
+        description: "Commit URL (optional)"
+        required: false
+        type: string
+
     secrets:
       SMTP_HOST:
         required: true
@@ -41,7 +73,7 @@ jobs:
             const transporter = nodemailer.createTransport({
               host: process.env.SMTP_HOST,
               port,
-              secure: port === 465, // SSL for 465
+              secure: port === 465,
               auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
             });
 
@@ -96,13 +128,12 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAINTAINER_EMAIL: ${{ inputs.maintainer_email }}
 
-          # PR-specific
-          PR_TITLE: ${{ github.event.pull_request.title || '' }}
-          PR_URL: ${{ github.event.pull_request.html_url || '' }}
-          CONTRIBUTOR: ${{ github.event.pull_request.user.login || '' }}
+          # Use inputs (passed from caller) instead of github.event.* which won't be populated here
+          PR_TITLE: ${{ inputs.PR_TITLE || '' }}
+          PR_URL: ${{ inputs.PR_URL || '' }}
+          CONTRIBUTOR: ${{ inputs.CONTRIBUTOR || '' }}
 
-          # Push-specific
-          BRANCH: ${{ github.ref_name || '' }}
-          COMMITTER: ${{ github.actor || '' }}
-          COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
-          COMMIT_URL: ${{ github.event.head_commit.url || '' }}
+          BRANCH: ${{ inputs.BRANCH || '' }}
+          COMMITTER: ${{ inputs.COMMITTER || '' }}
+          COMMIT_MESSAGE: ${{ inputs.COMMIT_MESSAGE || '' }}
+          COMMIT_URL: ${{ inputs.COMMIT_URL || '' }}
