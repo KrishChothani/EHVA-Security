@@ -1,21 +1,8 @@
-name: Container Scan (Trivy)
+name: Trivy Source Code Scan
 
 on:
   workflow_call:
     inputs:
-      image:
-        type: string
-        description: "Docker image ref to scan"
-        default: "app:ci"
-      build:
-        type: boolean
-        default: true
-      dockerfile:
-        type: string
-        default: "./Dockerfile"
-      context:
-        type: string
-        default: "."
       severity_fail:
         type: string
         default: "CRITICAL,HIGH"
@@ -24,26 +11,31 @@ jobs:
   trivy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - if: ${{ inputs.build }}
-        name: Build image
-        run: docker build -t "${{ inputs.image }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
-
-      - name: Trivy scan
-        uses: aquasecurity/setup-trivy@v0.2.4
+      # Run Trivy scan on source code (no Docker)
+      - name: Trivy FS scan
+        uses: aquasecurity/trivy-action@v0.20.0
         with:
-          image-ref: ${{ inputs.image }}
+          scan-type: fs
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: ${{ inputs.severity_fail }}
 
-      - name: Save report
+      # Save detailed JSON report
+      - name: Save Trivy JSON report
         if: ${{ always() }}
-        run: trivy image --severity ${{ inputs.severity_fail }} --format json ${{ inputs.image }} > trivy.json
+        run: |
+          sudo apt-get install -y wget
+          wget -q https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.52.2_Linux-64bit.tar.gz
+          tar zxvf trivy_0.52.2_Linux-64bit.tar.gz
+          sudo mv trivy /usr/local/bin/
+          trivy fs --severity ${{ inputs.severity_fail }} --format json . > trivy.json
 
+      # Upload the JSON report to GitHub Actions artifacts
       - name: Upload report
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
