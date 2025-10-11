@@ -1,41 +1,38 @@
-name: PR & Commit Notification Email
+name: Universal Email Sender
 
 on:
   workflow_call:
     inputs:
       maintainer_email:
-        description: "Email address of the maintainer"
+        description: "Recipient email address (can be one or multiple, comma-separated)"
         required: true
         type: string
 
-      # Added optional inputs to receive caller context
-      PR_TITLE:
-        description: "Pull request title (optional)"
-        required: false
-        type: string
-      PR_URL:
-        description: "Pull request URL (optional)"
-        required: false
-        type: string
-      CONTRIBUTOR:
-        description: "PR contributor login (optional)"
-        required: false
+      subject:
+        description: "Subject of the email"
+        required: true
         type: string
 
-      BRANCH:
-        description: "Branch name (optional)"
+      body:
+        description: "HTML or plain text content of the email"
+        required: true
+        type: string
+
+      # Optional inputs for advanced context
+      sender_name:
+        description: "Display name of sender"
         required: false
         type: string
-      COMMITTER:
-        description: "Committer (optional)"
+      cc:
+        description: "CC email addresses (comma-separated)"
         required: false
         type: string
-      COMMIT_MESSAGE:
-        description: "Commit message (optional)"
+      bcc:
+        description: "BCC email addresses (comma-separated)"
         required: false
         type: string
-      COMMIT_URL:
-        description: "Commit URL (optional)"
+      attachments:
+        description: "JSON array of attachments [{filename, path, content}]"
         required: false
         type: string
 
@@ -52,7 +49,6 @@ on:
 jobs:
   send_email:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -65,11 +61,12 @@ jobs:
       - name: Install Nodemailer
         run: npm install nodemailer
 
-      - name: Send Notification Email
+      - name: Send Email via Nodemailer
         run: |
           node -e "
             const nodemailer = require('nodemailer');
             const port = Number(process.env.SMTP_PORT) || 465;
+
             const transporter = nodemailer.createTransport({
               host: process.env.SMTP_HOST,
               port,
@@ -77,39 +74,23 @@ jobs:
               auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
             });
 
-            const isPR = !!process.env.PR_TITLE;
-            let subject, htmlContent;
-
-            if (isPR) {
-              subject = \`PR Notification: \${process.env.PR_TITLE}\`;
-              htmlContent = \`
-                <h3>Hello Maintainer,</h3>
-                <p>A contributor has submitted or updated a pull request.</p>
-                <ul>
-                  <li><strong>Contributor:</strong> \${process.env.CONTRIBUTOR}</li>
-                  <li><strong>PR Title:</strong> \${process.env.PR_TITLE}</li>
-                  <li><strong>PR Link:</strong> <a href='\${process.env.PR_URL}'>View PR</a></li>
-                </ul>
-              \`;
-            } else {
-              subject = \`Commit Notification: \${process.env.COMMIT_MESSAGE}\`;
-              htmlContent = \`
-                <h3>Hello Maintainer,</h3>
-                <p>A commit has been pushed to the repository.</p>
-                <ul>
-                  <li><strong>Branch:</strong> \${process.env.BRANCH}</li>
-                  <li><strong>Committer:</strong> \${process.env.COMMITTER}</li>
-                  <li><strong>Message:</strong> \${process.env.COMMIT_MESSAGE}</li>
-                  <li><strong>Commit Link:</strong> <a href='\${process.env.COMMIT_URL}'>View Commit</a></li>
-                </ul>
-              \`;
+            let attachments = [];
+            try {
+              attachments = process.env.ATTACHMENTS ? JSON.parse(process.env.ATTACHMENTS) : [];
+            } catch (e) {
+              console.warn('⚠️ Invalid attachment format, ignoring attachments.');
             }
 
             const mailOptions = {
-              from: process.env.SMTP_USER,
+              from: process.env.SENDER_NAME 
+                ? \`\${process.env.SENDER_NAME} <\${process.env.SMTP_USER}>\`
+                : process.env.SMTP_USER,
               to: process.env.MAINTAINER_EMAIL,
-              subject,
-              html: htmlContent
+              cc: process.env.CC || undefined,
+              bcc: process.env.BCC || undefined,
+              subject: process.env.SUBJECT,
+              html: process.env.BODY,
+              attachments
             };
 
             transporter.sendMail(mailOptions, (err, info) => {
@@ -117,7 +98,7 @@ jobs:
                 console.error('❌ Email failed:', err);
                 process.exit(1);
               } else {
-                console.log('✅ Email sent:', info.response);
+                console.log('✅ Email sent successfully:', info.response);
               }
             });
           "
@@ -127,13 +108,9 @@ jobs:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           MAINTAINER_EMAIL: ${{ inputs.maintainer_email }}
-
-          # Use inputs (passed from caller) instead of github.event.* which won't be populated here
-          PR_TITLE: ${{ inputs.PR_TITLE || '' }}
-          PR_URL: ${{ inputs.PR_URL || '' }}
-          CONTRIBUTOR: ${{ inputs.CONTRIBUTOR || '' }}
-
-          BRANCH: ${{ inputs.BRANCH || '' }}
-          COMMITTER: ${{ inputs.COMMITTER || '' }}
-          COMMIT_MESSAGE: ${{ inputs.COMMIT_MESSAGE || '' }}
-          COMMIT_URL: ${{ inputs.COMMIT_URL || '' }}
+          SUBJECT: ${{ inputs.subject }}
+          BODY: ${{ inputs.body }}
+          SENDER_NAME: ${{ inputs.sender_name || '' }}
+          CC: ${{ inputs.cc || '' }}
+          BCC: ${{ inputs.bcc || '' }}
+          ATTACHMENTS: ${{ inputs.attachments || '[]' }}
