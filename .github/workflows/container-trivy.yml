@@ -44,14 +44,10 @@ jobs:
 
 
       # ✅ Second scan for JSON report generation
-      - name: Save JSON report
-        if: ${{ always() }}
-        run: trivy image --severity ${{ inputs.severity_fail }} --format json ${{ inputs.image }} > trivy.json
-
       - name: Upload report
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report
-          path: trivy.json
+          path: ${{ github.workspace }}/trivy-results/trivy.json
 
