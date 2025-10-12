@@ -30,8 +30,8 @@ jobs:
         name: Build image
         run: docker build -t "${{ inputs.image }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
 
-      - name: Trivy scan
-        uses: aquasecurity/setup-trivy@v0.2.4
+      - name: Run Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ inputs.image }}
           format: 'table'
