@@ -30,13 +30,16 @@ jobs:
         name: Build image
         run: docker build -t "${{ inputs.image }}" -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
 
+      - name: Create Trivy results directory
+        run: mkdir -p trivy-results
+
       # ✅ FIXED: use official trivy-action instead of setup-trivy
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ inputs.image }}
           format: 'json'
-          output: 'trivy.json'
+          output: 'trivy-results/trivy.json'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
@@ -49,5 +52,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report
-          path: trivy.json
+          path: trivy-results/trivy.json
 
