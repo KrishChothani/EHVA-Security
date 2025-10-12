@@ -35,11 +35,13 @@ jobs:
         uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: ${{ inputs.image }}
-          format: 'table'
+          format: 'json'
+          output: 'trivy.json'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: ${{ inputs.severity_fail }}
+
 
       # ✅ Second scan for JSON report generation
       - name: Save JSON report
@@ -52,3 +54,4 @@ jobs:
         with:
           name: trivy-report
           path: trivy.json
+
