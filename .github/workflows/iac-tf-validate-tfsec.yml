@@ -1,66 +1,55 @@
-name: IaC Validate & tfsec (auto-discover)
+name: IaC Validate & tfsec
 
 on:
   workflow_call:
     inputs:
+      working_dir:
+        type: string
+        default: "infra"
       tf_version:
         type: string
         default: "1.8.5"
 
 jobs:
-  discover:
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.mk.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-      - id: mk
-        name: Build directory matrix
-        shell: bash
-        run: |
-          # List unique dirs containing .tf files, ignore .git and hidden dirs
-          mapfile -t dirs < <(find . -type f -name "*.tf" -not -path "*/.*/*" -printf '%h\n' | sort -u)
-          if [ ${#dirs[@]} -eq 0 ]; then
-            echo "matrix={\"dir\":[]}" >> "$GITHUB_OUTPUT"
-          else
-            json=$(printf '%s\n' "${dirs[@]}" | jq -R . | jq -s '{dir: .}')
-            echo "matrix=$json" >> "$GITHUB_OUTPUT"
-          fi
-
   terraform:
-    needs: discover
-    if: ${{ fromJson(needs.discover.outputs.matrix).dir != null && fromJson(needs.discover.outputs.matrix).dir.size() > 0 }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJson(needs.discover.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: hashicorp/setup-terraform@v2
         with:
           terraform_version: ${{ inputs.tf_version }}
 
-      - name: Terraform fmt/validate/plan
+      # Quickly check if the directory exists AND has any .tf files
+      - name: Check Terraform dir
+        id: check_dir
+        shell: bash
         run: |
-          terraform -chdir="${{ matrix.dir }}" init -input=false
-          terraform -chdir="${{ matrix.dir }}" fmt -check
-          terraform -chdir="${{ matrix.dir }}" validate
-          terraform -chdir="${{ matrix.dir }}" plan -out=tfplan
+          dir="${{ inputs.working_dir }}"
+          if [ -d "$dir" ] && compgen -G "$dir/**/*.tf" > /dev/null || compgen -G "$dir/*.tf" > /dev/null; then
+            echo "has_tf=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_tf=false" >> "$GITHUB_OUTPUT"
+            echo "No Terraform files found in '$dir'. Skipping."
+          fi
+
+      - name: Terraform fmt/validate/plan
+        if: ${{ steps.check_dir.outputs.has_tf == 'true' }}
+        run: |
+          terraform -chdir="${{ inputs.working_dir }}" init -input=false
+          terraform -chdir="${{ inputs.working_dir }}" fmt -check
+          terraform -chdir="${{ inputs.working_dir }}" validate
+          terraform -chdir="${{ inputs.working_dir }}" plan -out=tfplan
 
       - name: tfsec
+        if: ${{ steps.check_dir.outputs.has_tf == 'true' }}
         uses: aquasecurity/tfsec-action@v1.0.3
         with:
-          working_directory: ${{ matrix.dir }}
+          working_directory: ${{ inputs.working_dir }}
 
       - name: Upload plan
+        if: ${{ steps.check_dir.outputs.has_tf == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: tf-plan-${{ hashFiles(format('{0}/**/*.tf', matrix.dir)) }}
-          path: ${{ matrix.dir }}/tfplan
-
-  no_tf:
-    needs: discover
-    if: ${{ !(fromJson(needs.discover.outputs.matrix).dir != null && fromJson(needs.discover.outputs.matrix).dir.size() > 0) }}
-    runs-on: ubuntu-latest
-    steps:
-      - run: echo "No Terraform files found. Skipping IaC job."
+          name: tf-plan
+          path: ${{ inputs.working_dir }}/tfplan
