@@ -28,10 +28,16 @@ jobs:
           terraform validate
           terraform plan -out=tfplan
 
+      # ✅ Use a real tag and correct inputs
       - name: tfsec
-        uses: aquasecurity/tfsec-action@v1
+        uses: aquasecurity/tfsec-action@v1.0.3
         with:
-          args: ${{ inputs.working_dir }}
+          working_directory: ${{ inputs.working_dir }}
+          # optional:
+          # format: sarif
+          # additional_args: --minimum-severity HIGH
+          # soft_fail: false
+          # github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload plan
         uses: actions/upload-artifact@v4
