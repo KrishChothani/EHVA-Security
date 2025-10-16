@@ -1,3 +1,4 @@
+# .github/workflows/global-zap.yml
 name: DAST (ZAP Baseline)
 
 on:
@@ -6,6 +7,9 @@ on:
       target:
         type: string
         required: true
+      port:
+        type: number
+        default: 3000
       max_time:
         type: number
         default: 5
@@ -16,16 +20,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: ZAP Baseline
-        uses: zaproxy/action-baseline@v0.10.0
-        with:
-          target: ${{ inputs.target }}
-          rules_file_name: ''
-          cmd_options: '-m ${{ inputs.max_time }}'
+      - name: Wait for target
+        run: |
+          for i in {1..30}; do
+            if curl -fsS "${{ inputs.target }}:${{ inputs.port }}" >/dev/null 2>&1; then
+              echo "Target is up."; exit 0
+            fi
+            echo "Waiting for target on ${{ inputs.port }}..."; sleep 2
+          done
+          echo "Target did not start in time."; exit 1
 
-      - name: Upload HTML report
-        if: ${{ always() }}
+      - name: Run ZAP Baseline
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: "${{ inputs.target }}:${{ inputs.port }}"
+          cmd_options: "-m ${{ inputs.max_time }}"
+
+      - name: Upload ZAP report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zap-report
-          path: report_html.html
+          path: |
+            report_html.html
+            report_json.json
+          if-no-files-found: ignore
