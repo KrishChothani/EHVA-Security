@@ -19,7 +19,7 @@ on:
       severity_fail:
         type: string
         default: "CRITICAL,HIGH"
-      artifact_name:            
+      artifact_name:                  # ✅ add dynamic artifact name input
         required: false
         default: "trivy-report"
         type: string
@@ -37,7 +37,6 @@ jobs:
       - name: Create Trivy results directory
         run: mkdir -p trivy-results
 
-      # ✅ FIXED: use official trivy-action instead of setup-trivy
       - name: Run Trivy vulnerability scan
         uses: aquasecurity/trivy-action@0.20.0
         with:
@@ -49,11 +48,14 @@ jobs:
           vuln-type: 'os,library'
           severity: ${{ inputs.severity_fail }}
 
-      # ✅ Second scan for JSON report generation
-      - name: Upload report
-        if: ${{ always() }}
+      # ✅ FIXED: use dynamic artifact name to prevent 409 conflicts
+      - name: Upload Trivy report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trivy-report
+          name: ${{ inputs.artifact_name }}      # ✅ dynamic name
           path: trivy-results/trivy.json
-
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
