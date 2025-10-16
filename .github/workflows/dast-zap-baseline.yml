@@ -12,18 +12,63 @@ on:
       artifact_name:
         type: string
         default: "zap-report"
+      build_image:
+        type: boolean
+        default: false
+      dockerfile:
+        type: string
+        default: "./Dockerfile"
+      context:
+        type: string
+        default: "."
+      app_port:
+        type: number
+        default: 8000
 
 jobs:
   zap:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
       - name: Create results files
         run: |
-          touch report_html.html report_json.json
-          chmod a+w report_html.html report_json.json
+          touch report_html.html report_json.json report_md.md || true
+          chmod a+w report_html.html report_json.json report_md.md || true
 
+      # Create docker network for app + zap to communicate
+      - name: Create docker network
+        run: docker network create zapnet || true
+
+      # Optional: build and run app (use when caller sets build_image=true)
+      - name: Build app image (optional)
+        if: ${{ inputs.build_image == true }}
+        run: |
+          docker build -t app:ci -f "${{ inputs.dockerfile }}" "${{ inputs.context }}"
+
+      - name: Run app container (optional)
+        if: ${{ inputs.build_image == true }}
+        run: |
+          docker run -d --rm --name app --network zapnet -p ${{ inputs.app_port }}:${{ inputs.app_port }} app:ci
+
+      # Wait for app to be healthy (works whether app is a container exposing localhost:port or an external URL)
+      - name: Wait for app (only if target is localhost or app)
+        if: startsWith(inputs.target, 'http://localhost') || startsWith(inputs.target, 'http://app') || startsWith(inputs.target, 'http://127.0.0.1') || startsWith(inputs.target, 'http://host.docker.internal') || startsWith(inputs.target, 'http://0.0.0.0')
+        run: |
+          TARGET="${{ inputs.target }}"
+          echo "Waiting for ${TARGET} to be ready..."
+          for i in {1..30}; do
+            if curl -fsS "${TARGET}" >/dev/null 2>&1; then
+              echo "Target is up."; exit 0
+            fi
+            echo "Waiting for ${TARGET}... ($i)"; sleep 2
+          done
+          echo "Target did not start in time."; docker logs app || true; exit 1
+
+      # Run ZAP baseline. We instruct the action to run with the docker network so it can talk to 'app' container.
       - name: Run ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0
         with:
@@ -32,6 +77,14 @@ jobs:
           cmd_options: "-m ${{ inputs.max_time }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Note: this block doesn't actually attach network — the zap action uses docker internally.
+        # The action supports running via Docker; to ensure it reaches the app container by name, set target to http://app:PORT when build_image==true.
+        # We'll rely on the caller to set target appropriately (http://app:8000) if build_image==true.
+
+      - name: Stop app (if started)
+        if: ${{ inputs.build_image == true }}
+        if: always()
+        run: docker stop app || true
 
       - name: Upload ZAP report
         if: always()
@@ -41,4 +94,9 @@ jobs:
           path: |
             report_html.html
             report_json.json
+            report_md.md
           if-no-files-found: ignore
+
+      - name: Remove docker network
+        if: always()
+        run: docker network rm zapnet || true
